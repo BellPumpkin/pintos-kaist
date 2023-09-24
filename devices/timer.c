@@ -18,6 +18,7 @@
 #endif
 
 /* Number of timer ticks since OS booted. */
+// 운영체제가 부팅되고 나서 지난 타이머 틱의 수를 나타내며, 시스템의 시간 측정과 관련된 정보 중 하나
 static int64_t ticks;
 
 /* Number of loops per timer tick.
@@ -29,20 +30,44 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 
+// 타이머 인터럽트: 주기적으로 발생하여 스케줄러가 실행 중인 스레드를 중단하고
+// 다음 스레드를 실행하도록 하는 인터럽트입니다.
+
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
    interrupt PIT_FREQ times per second, and registers the
-   corresponding interrupt. */
+   corresponding interrupt.
+
+   8254 Programmable Interval Timer (PIT)를 초당 PIT_FREQ 번의 인터럽트를 발생하도록
+   설정하고 해당하는 인터럽트를 등록합니다.
+
+   8254 PIT는 컴퓨터 아키텍처에서 사용되는 타이머 칩입니다.
+   이 칩은 시스템에서 정밀한 타이밍 및 인터럽트를 관리하는 데 사용됩니다.
+   주로 주기적인 타이머 인터럽트 및 다른 시간 관련 작업에 활용됩니다.
+   위의 문장은 8254 PIT를 설정하여 초당 일정 횟수의 인터럽트를 발생하도록 하는 작업을 수행한다는 내용을 나타냅니다.
+*/
+
+// 8254 PIT를 Rate Generator 모드로 설정하고,
+// 주어진 주기(count 값)로 타이머를 초기화하며,
+// 이를 커널 인터럽트로 등록하는 역할을 합니다.
+// 이를 통해 커널은 일정한 주기로 타이머 인터럽트를 받아 시간 관련 작업을 수행
 void
 timer_init (void) {
-	/* 8254 input frequency divided by TIMER_FREQ, rounded to
-	   nearest. */
-	uint16_t count = (1193180 + TIMER_FREQ / 2) / TIMER_FREQ;
+	/* 8254 input frequency divided by TIMER_FREQ, rounded to nearest.
+	   8254 입력 주파수를 TIMER_FREQ로 나눈 값, 반올림한 값입니다. */
+	uint16_t count = (1193180 + TIMER_FREQ / 2) / TIMER_FREQ; // TIMER_FREQ = 100;
 
+	// 8254 PIT의 컨트롤 레지스터(Command Word, CW)에 값을 출력하여 타이머 설정을 지정
 	outb (0x43, 0x34);    /* CW: counter 0, LSB then MSB, mode 2, binary. */
-	outb (0x40, count & 0xff);
-	outb (0x40, count >> 8);
+	// "counter 0": PIT의 카운터 0을 설정하겠다는 의미.
+	// "LSB then MSB": 카운터 값을 LSB(Low-Byte)와 MSB(High-Byte)로 나누어 입력할 것.
+	// "mode 2": PIT의 작동 모드를 2로 설정 (Rate Generator 모드).
+	// "binary": 카운터 값을 이진(binary)으로 처리하겠다는 의미.
+
+	outb (0x40, count & 0xff);	// PIT의 카운터 0의 LSB(Low-Byte)에 count 값을 설정
+	outb (0x40, count >> 8);	// PIT의 카운터 0의 MSB(High-Byte)에 count 값을 설정
 
 	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+	//  PIT에서 발생하는 인터럽트를 등록
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -71,6 +96,7 @@ timer_calibrate (void) {
 }
 
 /* Returns the number of timer ticks since the OS booted. */
+// 운영 체제 부팅 이후의 타이머 틱 수를 반환합니다.
 int64_t
 timer_ticks (void) {
 	enum intr_level old_level = intr_disable ();
@@ -82,20 +108,38 @@ timer_ticks (void) {
 
 /* Returns the number of timer ticks elapsed since THEN, which
    should be a value once returned by timer_ticks(). */
+// 특정시간 이후로 경과된 시간(ticks) 를 반환
 int64_t
-timer_elapsed (int64_t then) {
-	return timer_ticks () - then;
+timer_elapsed (int64_t then) { // 맨 처음은 0
+	return timer_ticks () - then; // 현재 ticks 반환, then은 start -> 최대 ticks에 도달하면 0이 되겠지, 
 }
 
-/* Suspends execution for approximately TICKS timer ticks. */
+
+
+
+
+
+/* Suspends execution for approximately TICKS timer ticks. - TICKS 타이머 틱에 대략적으로 대기 */
+// timer_sleep만 고치면 된다.
 void
-timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+timer_sleep (int64_t ticks) { // 우리가 현재 슬립 시켜주고 싶은 ticks(ex. 5초)가 최소 5초동안 재움 
+	// timer_ticks 호출 값을 현재 ticks(ex. 1초 5 ticks 동안 cpu 점유 가능) 지금 얼마동안 돌아가는 지 -> 
+	int64_t start = timer_ticks () + ticks;
 
-	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	ASSERT (intr_get_level () == INTR_ON);	// 인터럽트 상태인지 확인, INTR_ON 상태면, yield 할 수 있음 
+	thread_sleep(start); // 자고있는 쓰레드를 깨워라 시간되면 꺠워라, 잠든 
+	// while (timer_elapsed (start) < ticks)	// start로 부터 얼마나 시간이 지났는 지 반환해서 ticks랑 비교해서 
+	// 	thread_yield ();					// 양보를 함 -> 스케줄링이 일어나면서, 시간을 씀, 원래 쓰레드로 스위칭
 }
+// 바로 wake하지 말고, 대기하고 레디
+
+
+
+
+
+
+
+
 
 /* Suspends execution for approximately MS milliseconds. */
 void
@@ -126,6 +170,8 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	thread_wake (ticks);
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
