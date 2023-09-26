@@ -6,7 +6,7 @@ static int next (int pos);
 static void wait (struct intq *q, struct thread **waiter);
 static void signal (struct intq *q, struct thread **waiter);
 
-/* Initializes interrupt queue Q. */
+/* Initializes interrupt queue Q. - 인터럽트 큐 Q를 초기화합니다 */
 void
 intq_init (struct intq *q) {
 	lock_init (&q->lock);

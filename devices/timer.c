@@ -99,9 +99,9 @@ timer_calibrate (void) {
 // 운영 체제 부팅 이후의 타이머 틱 수를 반환합니다.
 int64_t
 timer_ticks (void) {
-	enum intr_level old_level = intr_disable ();
+	enum intr_level old_level = intr_disable (); // 인터럽트가 발생하지않는 상태에서 tick수를 안전하게 읽어올 수 있음
 	int64_t t = ticks;
-	intr_set_level (old_level);
+	intr_set_level (old_level); // 이전에 작성한 인터럽트 레벨로 복원, 인터럽트 다시 활성화
 	barrier ();
 	return t;
 }
@@ -114,11 +114,6 @@ timer_elapsed (int64_t then) { // 맨 처음은 0
 	return timer_ticks () - then; // 현재 ticks 반환, then은 start -> 최대 ticks에 도달하면 0이 되겠지, 
 }
 
-
-
-
-
-
 /* Suspends execution for approximately TICKS timer ticks. - TICKS 타이머 틱에 대략적으로 대기 */
 // timer_sleep만 고치면 된다.
 void
@@ -127,19 +122,11 @@ timer_sleep (int64_t ticks) { // 우리가 현재 슬립 시켜주고 싶은 tic
 	int64_t start = timer_ticks () + ticks;
 
 	ASSERT (intr_get_level () == INTR_ON);	// 인터럽트 상태인지 확인, INTR_ON 상태면, yield 할 수 있음 
-	thread_sleep(start); // 자고있는 쓰레드를 깨워라 시간되면 꺠워라, 잠든 
+	thread_sleep(start); // 자고있는 쓰레드를 깨워라 시간되면 깨워라, 잠든 
 	// while (timer_elapsed (start) < ticks)	// start로 부터 얼마나 시간이 지났는 지 반환해서 ticks랑 비교해서 
-	// 	thread_yield ();					// 양보를 함 -> 스케줄링이 일어나면서, 시간을 씀, 원래 쓰레드로 스위칭
+	// thread_yield ();					// 양보를 함 -> 스케줄링이 일어나면서, 시간을 씀, 원래 쓰레드로 스위칭
 }
 // 바로 wake하지 말고, 대기하고 레디
-
-
-
-
-
-
-
-
 
 /* Suspends execution for approximately MS milliseconds. */
 void

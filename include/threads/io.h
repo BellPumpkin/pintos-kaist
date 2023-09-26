@@ -105,9 +105,12 @@ insl (uint16_t port, void *addr, size_t cnt) {
 }
 
 /* Writes byte DATA to PORT. */
+// 함수는 어셈블리 코드를 사용하여 데이터를 지정된 포트로 출력하며, I/O 포트에 데이터를 쓰는 작업을 수행합니다.
+// 이 함수는 하드웨어와의 상호 작용을 위해 사용되며, 커널 또는 드라이버에서 접근할 때 유용
 static inline void
 outb (uint16_t port, uint8_t data) {
 	/* See [IA32-v2b] "OUT". */
+	// 주어진 데이터를 주어진 포트로 출력하는 역할을 합니다.
 	asm volatile ("outb %0,%w1" : : "a" (data), "d" (port));
 }
 

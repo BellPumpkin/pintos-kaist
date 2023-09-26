@@ -268,6 +268,7 @@ palloc_get_multiple (enum palloc_flags flags, size_t page_cnt) {
 	lock_release (&pool->lock);
 	void *pages;
 
+	// 물리페이지, 실제 메모리에 할당되어 있는 
 	if (page_idx != BITMAP_ERROR)
 		pages = pool->base + PGSIZE * page_idx;
 	else

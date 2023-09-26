@@ -25,7 +25,7 @@ static int64_t key_cnt;
 
 static intr_handler_func keyboard_interrupt;
 
-/* Initializes the keyboard. */
+/* Initializes the keyboard. - 키보드를 초기화합니다. */
 void
 kbd_init (void) {
 	intr_register_ext (0x21, keyboard_interrupt, "8042 Keyboard");

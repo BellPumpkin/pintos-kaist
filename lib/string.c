@@ -254,6 +254,7 @@ strtok_r (char *s, const char *delimiters, char **save_ptr) {
 }
 
 /* Sets the SIZE bytes in DST to VALUE. */
+// ex) dst_=0x8004221838, value=0, size=18446744073709551615
 void *
 memset (void *dst_, int value, size_t size) {
 	unsigned char *dst = dst_;

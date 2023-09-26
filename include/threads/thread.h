@@ -128,6 +128,7 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. - thread.c와 synch.c 간에 공유됩니다. */
 	struct list_elem elem;              /* List element. - 리스트 요소 */
+	// int origin_priority;			// 수정!
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */

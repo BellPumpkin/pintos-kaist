@@ -70,19 +70,26 @@ main (void) {
 	uint64_t mem_end;
 	char **argv;
 
-	/* Clear BSS and get machine's RAM size. */
+	/* Clear BSS and get machine's RAM size. - BSS 지우기 및 시스템의 RAM 크기 가져오기 */
+	// 초기값을 설정하지 않은 전역 변수와 정적 변수를 위한 영역으로 0으로 자동 초기화
 	bss_init ();
+	// 컴퓨터 프로그래밍에서 .bss 또는 bss는 수많은 컴파일러와 링커가 처음에 0 값의 비트로 표현되는 정적으로 할당된
+	// 변수를 포함하는 데이터 세그먼트의 한 부분으로 사용
 
 	/* Break command line into arguments and parse options. */
+	// 명령줄을 인수 및 구문 분석 옵션으로 구분합니다.
 	argv = read_command_line ();
 	argv = parse_options (argv);
 
 	/* Initialize ourselves as a thread so we can use locks,
-	   then enable console locking. */
+	   then enable console locking.
+
+	   locks를 사용할 수 있도록 스레드를 초기화한 다음 콘솔 locking을 활성화 합니다.   
+	*/
 	thread_init ();
 	console_init ();
 
-	/* Initialize memory system. */
+	/* Initialize memory system. - 메모리 시스템 초기화 */
 	mem_end = palloc_init ();
 	malloc_init ();
 	paging_init (mem_end);
@@ -92,17 +99,27 @@ main (void) {
 	gdt_init ();
 #endif
 
-	/* Initialize interrupt handlers. */
+	/* Initialize interrupt handlers. - 인터럽트 핸들러를 초기화합니다. */
 	intr_init ();
+
+	// 커널 인터럽트로 등록하는 역할을 합니다.
+	// 커널은 일정한 주기로 타이머 인터럽트를 받아 시간 관련 작업을 수행
 	timer_init ();
+
+	/* Initializes the keyboard. - 키보드를 초기화합니다. */
 	kbd_init ();
+
+	// 입력 버퍼를 초기화
+	// 입력을 정확하게 처리하기 위해 이전 데이터를 비우는 작업을 의미
 	input_init ();
+
 #ifdef USERPROG
 	exception_init ();
 	syscall_init ();
 #endif
-	/* Start thread scheduler and enable interrupts. */
+	/* Start thread scheduler and enable interrupts. - 스레드 스케줄러를 시작하고 인터럽트를 활성화 */
 	thread_start ();
+
 	serial_init_queue ();
 	timer_calibrate ();
 
@@ -140,7 +157,7 @@ bss_init (void) {
 	memset (&_start_bss, 0, &_end_bss - &_start_bss);
 }
 
-/* Populates the page table with the kernel virtual mapping,
+/* Populates the page table with gthe kernel virtual mapping,
  * and then sets up the CPU to use the new page directory.
  * Points base_pml4 to the pml4 it creates. */
 static void
@@ -168,7 +185,8 @@ paging_init (uint64_t mem_end) {
 }
 
 /* Breaks the kernel command line into words and returns them as
-   an argv-like array. */
+   an argv-like array. 
+   커널 명령 줄을 단어로 분할하고 이를 argv와 유사한 배열로 반환합니다. */
 static char **
 read_command_line (void) {
 	static char *argv[LOADER_ARGS_LEN / 2 + 1];
@@ -201,7 +219,9 @@ read_command_line (void) {
 }
 
 /* Parses options in ARGV[]
-   and returns the first non-option argument. */
+   and returns the first non-option argument.
+
+   "ARGV[] 내의 옵션을 파싱하고 첫 번째 비-옵션 인자를 반환합니다.*/
 static char **
 parse_options (char **argv) {
 	for (; *argv != NULL && **argv == '-'; argv++) {

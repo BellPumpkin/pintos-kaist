@@ -100,8 +100,8 @@ static const char *intr_names[INTR_CNT];
    sleep, although they may invoke intr_yield_on_return() to
    request that a new process be scheduled just before the
    interrupt returns. */
-static bool in_external_intr;   /* Are we processing an external interrupt? */
-static bool yield_on_return;    /* Should we yield on interrupt return? */
+static bool in_external_intr;   /* Are we processing an external interrupt? - 우리는 외부 인터럽트를 처리하고 있나요 */
+static bool yield_on_return;    /* Should we yield on interrupt return? - 인터럽트 반환 시 양보해야 할까요? */
 
 /* Programmable Interrupt Controller helpers. */
 static void pic_init (void);
@@ -110,22 +110,44 @@ static void pic_end_of_interrupt (int irq);
 /* Interrupt handlers. */
 void intr_handler (struct intr_frame *args);
 
-/* Returns the current interrupt status. */
+/* Returns the current interrupt status. - 현재의 인터럽트 상태를 반환합니다 */
 enum intr_level
 intr_get_level (void) {
+	// uint64_t 타입의 flags 변수를 선언합니다.
+	// 이 변수는 플래그 레지스터 값을 저장할 공간으로 사용됩니다.
 	uint64_t flags;
 
 	/* Push the flags register on the processor stack, then pop the
 	   value off the stack into `flags'.  See [IA32-v2b] "PUSHF"
 	   and "POP" and [IA32-v3a] 5.8.1 "Masking Maskable Hardware
-	   Interrupts". */
+	   Interrupts".
+
+	   프로세서 스택의 플래그 레지스터를 누른 다음 스택의 값을 '플래그'로 팝합니다.
+	   [IA32-v2b] "PUSHF" 및 "POP" 및 [IA32-v3a] 5.8.1 "마스크 가능 하드웨어 인터럽트"를 참조하십시오.   
+	*/
+
+	// 인라인 어셈블리 코드를 실행합니다.
+	// pushfq: 현재 프로세서의 플래그 레지스터 값을 스택에 푸시합니다.
+	// popq %0: 스택에서 값을 팝하여 flags 변수에 저장합니다.
+	// "=g"는 출력 제약(constraint)으로 사용되며, 이것은 어셈블리 코드의 결과를 C 변수인 flags에 할당하는데 사용합니다.
 	asm volatile ("pushfq; popq %0" : "=g" (flags));
 
+	// 프로세서의 플래그 레지스터 값은 프로세서 상태와 제어 정보를 포함하는 레지스터입니다.
+	// x86 아키텍처에서는 RFLAGS 레지스터라고 불립니다. 
+	// 이 레지스터는 여러 비트로 구성되며, 각 비트는 특정한 상태 또는 제어 정보를 나타냅니다
+
+	// 플래그 레지스터에서 가져온 값(flags)을 FLAG_IF와 비트 AND 연산(&)을 수행합니다.
+	// FLAG_IF는 인터럽트 플래그를 나타내며, 인터럽트 활성화되면 이 플래그가 1로 설정됩니다.
+	// 따라서 flags & FLAG_IF는 현재 인터럽트 활성화 상태를 나타내게 됩니다.
+	// 이 값이 0이면 INTR_OFF을 반환하고, 그렇지 않으면 INTR_ON을 반환합니다.
 	return flags & FLAG_IF ? INTR_ON : INTR_OFF;
 }
 
 /* Enables or disables interrupts as specified by LEVEL and
-   returns the previous interrupt status. */
+   returns the previous interrupt status.
+
+   지정된 LEVEL에 따라 인터럽트를 활성화 또는 비활성화하고,
+   이전 인터럽트 상태를 반환하는 함수 */
 enum intr_level
 intr_set_level (enum intr_level level) {
 	return level == INTR_ON ? intr_enable () : intr_disable ();
@@ -134,37 +156,48 @@ intr_set_level (enum intr_level level) {
 /* Enables interrupts and returns the previous interrupt status. */
 enum intr_level
 intr_enable (void) {
-	enum intr_level old_level = intr_get_level ();
-	ASSERT (!intr_context ());
+	enum intr_level old_level = intr_get_level ();	// 현재의 인터럽트 레벨을 가져온다.
+	ASSERT (!intr_context ()); // 이 함수는 인터럽트 핸들러 내에서만 호출해야 한다는 것을 보장
 
 	/* Enable interrupts by setting the interrupt flag.
 
 	   See [IA32-v2b] "STI" and [IA32-v3a] 5.8.1 "Masking Maskable
 	   Hardware Interrupts". */
-	asm volatile ("sti");
+	asm volatile ("sti"); // "sti" 명령어는 CPU에서 인터럽트를 활성화하는 명령어,
+						  // 인터럽트가 다시 활성화되고, 인터럽트 핸들러가 동작
 
 	return old_level;
 }
 
-/* Disables interrupts and returns the previous interrupt status. */
+/* Disables interrupts and returns the previous interrupt status. - 인터럽트를 비활성화하고 이전의 인터럽트 상태를 반환합니다. */
+// 현재의 인터럽트 레벨을 저장하고, 인터럽트를 비활성화한 후 이전의 인터럽트 레벨을 반환
+// 이를 통해 인터럽트 처리를 일시적으로 중지하고 나중에 다시 이전의 인터럽트 레벨로 복원 할 수 있음
+// 이 함수는 주로 임계 영역에서 사용되며, 코드 일부를 원자적으로 실행하기 위해 인터럽트를 비활성화함.
 enum intr_level
 intr_disable (void) {
-	enum intr_level old_level = intr_get_level ();
+	enum intr_level old_level = intr_get_level ();	// 현재 인터럽트 레벨을 가져온다.
 
 	/* Disable interrupts by clearing the interrupt flag.
 	   See [IA32-v2b] "CLI" and [IA32-v3a] 5.8.1 "Masking Maskable
 	   Hardware Interrupts". */
-	asm volatile ("cli" : : : "memory");
+	asm volatile ("cli" : : : "memory");	// CPU에서 인터럽트를 금지하는 명령어
 
-	return old_level;
+	return old_level;	// 함수 호출 전의 인터럽트 레벨
 }
 
-/* Initializes the interrupt system. */
+/* Initializes the interrupt system. - 인터럽트 시스템 초기화 */
+
+// IDT
+// Interrupt Descriptor Table(인터럽트 서술자 테이블)을 가리키는 레지스터입니다.
+// IDT는 인터럽트와 예외를 처리하기 위한 중요한 데이터 구조
+// 이 테이블은 컴퓨터 시스템에서 발생하는
+// 다양한 인터럽트 및 예외 상황에 대한 처리기(인터럽트 핸들러)의 위치 및 설정 정보를 저장하고 있습니다.
 void
 intr_init (void) {
 	int i;
 
-	/* Initialize interrupt controller. */
+	/* Initialize interrupt controller. - 인터럽트 컨트롤러 초기화 */
+	// PIC - 여러 장치 또는 하드웨어 이벤트로부터 발생하는 인터럽트를 중재하고 우선순위를 관리하여 CPU에 전달하는 역할
 	pic_init ();
 
 	/* Initialize IDT. */
@@ -206,7 +239,11 @@ intr_init (void) {
 /* Registers interrupt VEC_NO to invoke HANDLER with descriptor
    privilege level DPL.  Names the interrupt NAME for debugging
    purposes.  The interrupt handler will be invoked with
-   interrupt status set to LEVEL. */
+   interrupt status set to LEVEL.
+   
+   인터럽트 VEC_NO를 HANDLER를 호출하도록 등록하며, 디스크립터 권한 수준(DPL)을 DPL로 지정합니다.
+   디버깅 목적으로 인터럽트 이름을 NAME으로 명명합니다.
+   인터럽트 핸들러는 LEVEL로 설정된 인터럽트 상태로 호출됩니다. */
 static void
 register_handler (uint8_t vec_no, int dpl, enum intr_level level,
 		intr_handler_func *handler, const char *name) {
@@ -223,11 +260,15 @@ register_handler (uint8_t vec_no, int dpl, enum intr_level level,
 
 /* Registers external interrupt VEC_NO to invoke HANDLER, which
    is named NAME for debugging purposes.  The handler will
-   execute with interrupts disabled. */
+   execute with interrupts disabled.
+   
+   외부 인터럽트 VEC_NO를 HANDLER로 등록하며,
+   디버깅 목적으로 NAME으로 명명됩니다.
+   핸들러는 인터럽트가 비활성화된 상태에서 실행됩니다. */
 void
 intr_register_ext (uint8_t vec_no, intr_handler_func *handler,
 		const char *name) {
-	ASSERT (vec_no >= 0x20 && vec_no <= 0x2f);
+	ASSERT (vec_no >= 0x20 && vec_no <= 0x2f); // 유효 범위를 확인하는 목적
 	register_handler (vec_no, 0, INTR_OFF, handler, name);
 }
 
@@ -253,7 +294,10 @@ intr_register_int (uint8_t vec_no, int dpl, enum intr_level level,
 }
 
 /* Returns true during processing of an external interrupt
-   and false at all other times. */
+   and false at all other times.
+   
+   외부 인터럽트 처리 중에는 true를 반환하고 다른 모든 시간에는 false를 반환합니다
+   */
 bool
 intr_context (void) {
 	return in_external_intr;
@@ -262,7 +306,11 @@ intr_context (void) {
 /* During processing of an external interrupt, directs the
    interrupt handler to yield to a new process just before
    returning from the interrupt.  May not be called at any other
-   time. */
+   time.
+   
+   외부 인터럽트 처리 중에, 인터럽트 핸들러가 인터럽트에서 반환하기 직전에
+   새로운 프로세스에 양보(yield)하도록 지시합니다.
+   다른 시간에는 호출해서는 안 됩니다 */
 void
 intr_yield_on_return (void) {
 	ASSERT (intr_context ());

@@ -93,16 +93,24 @@ struct list_elem {
 struct list {
 	struct list_elem head;      /* List head. */
 	struct list_elem tail;      /* List tail. */
+   // 헤드쪽에서 접근, 테일쪽에서 접근,
 };
 
 /* Converts pointer to list element LIST_ELEM into a pointer to
    the structure that LIST_ELEM is embedded inside.  Supply the
    name of the outer structure STRUCT and the member name MEMBER
    of the list element.  See the big comment at the top of the
-   file for an example. */
-#define list_entry(LIST_ELEM, STRUCT, MEMBER)           \
-	((STRUCT *) ((uint8_t *) &(LIST_ELEM)->next     \
-		- offsetof (STRUCT, MEMBER.next)))
+   file for an example.
+
+   리스트 요소 LIST_ELEM의 포인터를 LIST_ELEM이 내장된 구조체의 포인터로 변환합니다.
+   외부 구조체의 이름 STRUCT와 리스트 요소의 멤버 이름 MEMBER를 제공합니다.
+   예제는 파일 맨 위의 큰 주석을 참조하세요. */
+   
+   // 엘렘 -> 어느 쓰레드에 속해있는 지
+   // 해당 노드가 속한 구조체의 시작 주소로 이동한 다음, offsetof 매크로를 사용, MEMBER.next의 오프셋을 구함.
+   // 그렇게 얻은 오프셋을 뺀 주소는 구조체의 시작 주소입니다.
+   // 따라서 STRUCT * 형태로 형변환하면 해당 노드가 속한 구조체에 대한 포인터를 얻을 수 있음.
+#define list_entry(LIST_ELEM, STRUCT, MEMBER) ((STRUCT *) ((uint8_t *) &(LIST_ELEM)->next - offsetof (STRUCT, MEMBER.next)))
 
 void list_init (struct list *);
 

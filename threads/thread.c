@@ -76,6 +76,7 @@ static tid_t allocate_tid (void);
 bool cmp(struct list_elem *state_a, struct list_elem *state_b, void *aux UNUSED);
 
 /* Returns true if T appears to point to a valid thread. */
+// 만약 T가 유효한 스레드를 가리키는 것으로 보인다면 true를 반환합니다.
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
 /* Returns the running thread.
@@ -163,6 +164,7 @@ thread_init (void) {
 	init_thread (initial_thread, "main", PRI_DEFAULT);	// "main"이라는 이름과 priority가 31인 Thread 구조체 t를 초기화 
 	initial_thread->status = THREAD_RUNNING;	// 실행 중
 	initial_thread->tid = allocate_tid ();	// 새로운 스레드에 사용할 스레드 ID(tid)를 반환해서 initial_thread->tid 값에 저장
+
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -278,6 +280,9 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. - 실행 대기열에 추가 */
 	thread_unblock (t);
 
+	// 일단 2개 쓰레드 레디 큐에 넣을 때, 2개 priority 비교 큰 걸 맨 앞으로 함
+	 
+
 	return tid;
 }
 
@@ -317,10 +322,20 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);		// 
+	// list_insert_ordered(&ready_list, &t->elem, priority_cmp, NULL);
+	// list_insert_ordered (&sleep_list, &curr->elem, cmp, NULL);
 	list_push_back (&ready_list, &t->elem);		// 해당 쓰레드의 엘레멘트를 넣어준다. -> 상태를 레디 상태로 바꾸고, 
 	t->status = THREAD_READY;
 	intr_set_level (old_level);					
 }
+
+// bool priority_cmp(struct list_elem *state_a, struct list_elem *state_b, void *aux UNUSED)
+// {
+// 	const struct thread *a = list_entry(state_a, struct thread, elem); // 리스트
+// 	const struct thread *b = list_entry(state_b, struct thread, elem);
+// 	return (a->priority < b->priority);
+// }
+
 
 /* Returns the name of the running thread. */
 const char *
@@ -335,7 +350,7 @@ thread_name (void) {
 // 
 struct thread *
 thread_current (void) {
-	struct thread *t = running_thread ();
+	struct thread *t = running_thread (); // 현재 쓰레드를 찾을 수 있다.
 
 	/* Make sure T is really a thread.
 	   If either of these assertions fire, then your thread may
@@ -418,6 +433,7 @@ thread_sleep (int64_t wake_ticks) {
 		curr->wake_tick = wake_ticks;
 		list_insert_ordered (&sleep_list, &curr->elem, cmp, NULL);
 		// list_push_back (&ready_list, &curr->elem); // 레디 큐에 넣는다.
+	// do_schedule (THREAD_READY)
 	do_schedule (THREAD_BLOCKED);		// do_schedule() 현재 작동중인 쓰레드를 죽이지않고, 레디큐에 넣어주기 위해서 (양보당하는 애가 레디상태가 되고, 두 스케줄함수가 현재 러닝중인쓰레드를 인자로 넣어주는 상태로 바꿔주고, 등등) 
 	intr_set_level (old_level);
 }
@@ -561,6 +577,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 
     // 스레드의 우선 순위를 설정합니다.
     t->priority = priority;
+	
+	// 수정!
+	// t->origin_priority = priority;
 
     // 스레드의 마법값(magic)을 설정합니다. (디버깅 및 오류 검사에 사용될 수 있음)
     t->magic = THREAD_MAGIC;
@@ -622,7 +641,15 @@ do_iret (struct intr_frame *tf) {
 
    It's not safe to call printf() until the thread switch is
    complete.  In practice that means that printf()s should be
-   added at the end of the function. */
+   added at the end of the function. 
+   
+   새로운 스레드의 페이지 테이블을 활성화하여 스레드를 전환하고,
+   이전 스레드가 종료 중인 경우에는 해당 스레드를 파괴합니다.
+   이 함수가 호출될 때, 우리는 이미 이전 스레드(PREV)에서 스레드를 전환했으며,
+   새로운 스레드가 이미 실행 중이며 인터럽트가 아직 비활성화된 상태입니다.
+   스레드 전환이 완료되기 전에는 printf()를 호출하는 것은 안전하지 않습니다.
+   실제로는 printf() 호출을 함수의 끝에 추가해야 합니다.
+   */
 
 // 컨텍스트 
 static void
@@ -733,7 +760,7 @@ schedule (void) {
 	// 현재 쓰레드가 러닝 상태가 아니면 다음으로 넘어간다.  
 	ASSERT (curr->status != THREAD_RUNNING);
 
-	// 쓰레드인지 확인, 레디, 블럭, 죽은 거 다 넘어옴
+	// 쓰레드인지 확인, 레디, 블럭, 죽은 거 다 넘어옴??, 일단 idle, ready_que
 	ASSERT (is_thread (next));
 
 	/* Mark us as running. */
@@ -754,7 +781,13 @@ schedule (void) {
 		   We just queuing the page free reqeust here because the page is
 		   currently used by the stack.
 		   The real destruction logic will be called at the beginning of the
-		   schedule(). */
+		   schedule().
+
+		   우리가 스위치한 스레드가 종료 중이라면 해당 스레드의 'struct thread'을 파괴합니다.
+		   이 작업은 'thread_exit()'가 자신의 밑바닥을 빼앗아가지 않도록 늦게 일어나야 합니다.
+		   여기서는 페이지가 현재 스택에 사용되고 있기 때문에 페이지 해제 요청만 대기열에 넣는 것입니다.
+		   실제 파괴 로직은 'schedule()'의 시작 부분에서 호출될 것입니다
+		*/
 
 		// 맨처음(메인) 쓰레드 이닛에서 호출할 떄 (맨 처음 생성된 쓰레드 initial_thread)가 아니여야 한다.
 		if (curr && curr->status == THREAD_DYING && curr != initial_thread) {
@@ -763,7 +796,8 @@ schedule (void) {
 		}
 
 		/* Before switching the thread, we first save the information
-		 * of current running. */
+		 * of current running.
+		   스레드를 전환하기 전에, 현재 실행 중인 스레드의 정보를 먼저 저장합니다  */
 		
 		// 
 		thread_launch (next);
