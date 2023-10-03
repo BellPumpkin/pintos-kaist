@@ -74,8 +74,6 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 bool cmp(struct list_elem *state_a, struct list_elem *state_b, void *aux UNUSED);
-bool priority_cmp(struct list_elem *state_a, struct list_elem *state_b, void *aux UNUSED);
-void thread_test_preemption(void);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -159,8 +157,6 @@ thread_init (void) {
 	list_init (&ready_list);		// 실행 준비가 되었지만 실제로 실행되지 않는 프로세스의 목록을 초기화
 	list_init (&sleep_list);
 	list_init (&destruction_req);	// 스레드 삭제 요청하는 목록을 초기화
-
-	
 
 	/* Set up a thread structure for the running thread. - 실행 중인 스레드에 대한 스레드 구조 설정 */
 	initial_thread = running_thread ();		// 실행 중인 스레드를 반환
@@ -283,7 +279,7 @@ thread_create (const char *name, int priority,
 	thread_unblock (t);
 
 	// ready_list 추가 이후에, ready_list 맨 앞에 있는 쓰레드랑, 현재 러닝중인 쓰레드 비교
-	thread_test_preemption();
+	preempt_priority();
 
 	return tid;
 }
@@ -332,18 +328,19 @@ thread_unblock (struct thread *t) {
 	ASSERT (is_thread (t));
 
 	old_level = intr_disable ();
-	ASSERT (t->status == THREAD_BLOCKED);		// 
+	ASSERT (t->status == THREAD_BLOCKED);
 	// list_push_back (&ready_list, &t->elem);		// 해당 쓰레드의 엘레멘트를 넣어준다. -> 상태를 레디 상태로 바꾸고, 
-	list_insert_ordered(&ready_list, &t->elem, priority_cmp, NULL); // 수정 내림차순
+	list_insert_ordered(&ready_list, &t->elem, cmp_thread_priority, NULL); // 수정 내림차순
 	t->status = THREAD_READY;		// ready 상태로 만들어 주고
 	intr_set_level (old_level);					
 }
 
 // 수정!!
-bool priority_cmp(struct list_elem *state_a, struct list_elem *state_b, void *aux UNUSED)
+bool cmp_thread_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
-	    return list_entry (state_a, struct thread, elem)->priority
-         > list_entry (state_b, struct thread, elem)->priority;
+    struct thread *st_a = list_entry(a, struct thread, elem);
+    struct thread *st_b = list_entry(b, struct thread, elem);
+    return st_a->priority > st_b->priority;
 }
 
 
@@ -423,7 +420,7 @@ thread_yield (void) {
 	// 현재 쓰레드가 idle 쓰레드가 아니면 레디 중인 쓰레드가 없다.
 	if (curr != idle_thread)
 		// list_push_back (&ready_list, &curr->elem); // 레디 큐에 넣는다.
-		list_insert_ordered(&ready_list, &curr->elem, priority_cmp, NULL);
+		list_insert_ordered(&ready_list, &curr->elem, cmp_thread_priority, NULL);
 	do_schedule (THREAD_READY);		// do_schedule() 현재 작동중인 쓰레드를 죽이지않고, 레디큐에 넣어주기 위해서 (양보당하는 애가 레디상태가 되고, 두 스케줄함수가 현재 러닝중인쓰레드를 인자로 넣어주는 상태로 바꿔주고, 등등) 
 	intr_set_level (old_level);
 }
@@ -462,16 +459,30 @@ void thread_wake(int64_t tick)
 	{
 		struct list_elem *front_elem = list_pop_front(&sleep_list);
 		thread_unblock(list_entry(front_elem, struct thread, elem));
+
+		// !수정!
+		preempt_priority();
 	}
 }
-
-
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority; // main_thread->priority가 Default에서 33으로 변경
-	thread_test_preemption();
+	thread_current ()->init_priority = new_priority; // main_thread->priority가 Default에서 33으로 변경
+	update_priority_for_donations();
+	preempt_priority();
+}
+
+void preempt_priority(void)
+{
+    if (thread_current() == idle_thread)
+        return;
+    if (list_empty(&ready_list))
+        return;
+    struct thread *curr = thread_current();
+    struct thread *ready = list_entry(list_front(&ready_list), struct thread, elem);
+    if (curr->priority < ready->priority) // ready_list에 현재 실행중인 스레드보다 우선순위가 높은 스레드가 있으면
+        thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -589,13 +600,13 @@ init_thread (struct thread *t, const char *name, int priority) {
     // 스레드의 우선 순위를 설정합니다.
     t->priority = priority;
 
-	// 수정!!!!
-	t->origin_priority = priority;
-	t->wait_on_lock = NULL;
-	list_init(&t->donations);
-
     // 스레드의 마법값(magic)을 설정합니다. (디버깅 및 오류 검사에 사용될 수 있음)
     t->magic = THREAD_MAGIC;
+
+	t->init_priority = priority;
+    t->wait_on_lock = NULL;
+    list_init(&(t->donations));
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

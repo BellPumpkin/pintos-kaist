@@ -129,6 +129,13 @@ struct thread {
 	/* Shared between thread.c and synch.c. - thread.c와 synch.c 간에 공유됩니다. */
 	struct list_elem elem;              /* List element. - 리스트 요소 */
 
+	// 수정!!!!
+	int init_priority;		// 수정!!!, 양도 받았다가 원래의 값으로 돌아가기 위한 값
+	struct lock *wait_on_lock;	// 스레드가 현재 얻기 위해 기다리는 lock
+	struct list donations;		// 현재 thread에게 priority를 나눠준 쓰레드 리스트
+	struct list_elem donation_elem; // donations 리스트를 관리하기 위한 elem
+	
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -181,6 +188,19 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
 bool cmp(struct list_elem *state_a, struct list_elem *state_b, void *aux UNUSED);
+bool cmp_thread_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+void preempt_priority(void);
+void donate_priority(void);
+void update_priority_before_donations(void);
+
+bool cmp_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+void donate_priority(void);
+void remove_donor(struct lock *lock);
+void update_priority_before_donations(void);
+
+
+bool cmp_sema_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 #endif /* threads/thread.h */
